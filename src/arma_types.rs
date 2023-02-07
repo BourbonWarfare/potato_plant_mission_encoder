@@ -15,7 +15,6 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-
 #[derive(Debug, PartialEq)]
 pub enum VariableType {
     Unknown,
@@ -40,19 +39,82 @@ impl VariableType {
                 return VariableType::Unknown 
             }
 
-            let mut array_items_str = Vec::new();
-            data.strip_prefix("[")
-                .unwrap().strip_suffix("]")
-                .unwrap().split(",")
-                .for_each(|item| {
-                    if item != "" {
-                        array_items_str.push(item);
-                    }
-                });
+            let stripped_str = data.strip_prefix("[").unwrap();
 
+            enum ParseState {
+                Begin,
+                Number,
+                Boolean,
+                Array,
+                String
+            }
+
+            let mut state = ParseState::Begin;
             let mut array_types = Vec::new();
-            for array_item in array_items_str {
-                array_types.push(VariableType::get_type_from_string(array_item));
+
+            let mut working_type = Vec::new();
+            let mut bracket_counter = 0;
+
+            // Change program to write variables to stack of
+            // variables to fix array problem
+            let mut end_type_parse = |working_type: &mut Vec<char>| {
+                if !working_type.is_empty() {
+                    let type_str: String = working_type.iter().collect();
+                    array_types.push(VariableType::get_type_from_string(&type_str));
+                    working_type.clear();
+                }
+            };
+
+            for c in stripped_str.chars() {
+                match state {
+                    ParseState::Begin => {
+                        working_type.clear();
+                        working_type.push(c);
+                        if c.is_digit(10) {
+                            state = ParseState::Number;
+                        } else if c.is_alphabetic() {
+                            state = ParseState::Boolean;
+                        } else if c == '[' {
+                            state = ParseState::Array;
+                            bracket_counter = 1;
+                        } else if c == '"' {
+                            state = ParseState::String;
+                        }
+                    },
+                    ParseState::Number => {
+                        if c == ',' || c == ']' {
+                            end_type_parse(&mut working_type);
+                            state = ParseState::Begin;
+                        }
+                        working_type.push(c);
+                    },
+                    ParseState::Boolean => {
+                        if c == ',' || c == ']' {
+                            end_type_parse(&mut working_type);
+                            state = ParseState::Begin;
+                        }
+                        working_type.push(c);
+                    },
+                    ParseState::Array => {
+                        working_type.push(c);
+                        if c == '[' {
+                            bracket_counter += 1;
+                        } else if c == ']' {
+                            bracket_counter -= 1;
+                        }
+                        if bracket_counter == 0 {
+                            state = ParseState::Begin;
+                            end_type_parse(&mut working_type);
+                        }
+                    },
+                    ParseState::String => {
+                        working_type.push(c);
+                        if c == '"' {
+                            state = ParseState::Begin;
+                            end_type_parse(&mut working_type);
+                        }
+                    }
+                }
             }
 
             return VariableType::Array(array_types) 
@@ -113,17 +175,24 @@ mod variable_tests {
         assert_eq!(VariableType::get_type_from_string("[1,2,3,4]"), VariableType::Array(vec![
             VariableType::Number(1.0), VariableType::Number(2.0), VariableType::Number(3.0), VariableType::Number(4.0)
         ]));
-        assert_eq!(VariableType::get_type_from_string("[1,2,[3,4]]"), VariableType::Array(vec![
-            VariableType::Number(1.0), VariableType::Number(2.0), VariableType::Array(vec![
-                VariableType::Number(3.0), VariableType::Number(4.0)
-            ])
-        ]));
         assert_eq!(VariableType::get_type_from_string("[\"foo\", false]"), VariableType::Array(vec![
             VariableType::String("foo".to_string()), VariableType::Boolean(false)
         ]));
-
         assert_eq!(VariableType::get_type_from_string("[1,2,3,4"), VariableType::Unknown);
         assert_eq!(VariableType::get_type_from_string("[foo]"), VariableType::Array(vec![VariableType::Unknown]));
+        assert_eq!(VariableType::get_type_from_string("[[]]"), VariableType::Array(vec![VariableType::Array(vec![])]));
+        assert_eq!(VariableType::get_type_from_string("[[1, [], [2]]]"), VariableType::Array(vec![VariableType::Array(vec![VariableType::Number(1.0), VariableType::Array(vec![]), VariableType::Array(vec![VariableType::Number(2.0)])])]));
+        assert_eq!(VariableType::get_type_from_string("[1, \"hello, world!\", [2, \"hi, JOHN!\", [3], [4]], [5, \"foo\"]]"), VariableType::Array(vec![
+            VariableType::Number(1.0), VariableType::String("hello, world!".to_string()), VariableType::Array(vec![
+                VariableType::Number(2.0), VariableType::String("hi, JOHN!".to_string()), VariableType::Array(vec![
+                    VariableType::Number(3.0)
+                ]), VariableType::Array(vec![
+                    VariableType::Number(4.0)
+                ])
+            ]), VariableType::Array(vec![
+                VariableType::Number(5.0), VariableType::String("foo".to_string())
+            ])
+        ]));
     }
 }
 
