@@ -15,28 +15,41 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+use thiserror::Error;
+
 #[derive(Debug, PartialEq)]
 pub enum VariableType {
-    Unknown,
     Number(f64),
     String(String),
     Boolean(bool),
     Array(Vec<VariableType>)
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum VariableParseError {
+    #[error("No data to parse from string")]
+    NothingToParse,
+    #[error("Data is assumed to be an array, no closing bracket found")]
+    ArrayNoClosingBracket,
+    #[error("Data is assumed to be a string, no closing quote found")]
+    StringNoClosingQuote,
+    #[error("Data is assumed to be a number, found non numeric characters")]
+    NumberBadData
+}
+
 impl VariableType {
-    pub fn get_type_from_string(data: &str) -> VariableType {
+    pub fn get_type_from_string(data: &str) -> Result<VariableType, VariableParseError> {
         if data.is_empty() {
-            return VariableType::Unknown  
+            return Err(VariableParseError::NothingToParse) 
         }
 
         if data == "true" || data == "false" {
-            return VariableType::Boolean(data == "true") 
+            return Ok(VariableType::Boolean(data == "true"))
         }
 
         if data.chars().next().unwrap() == '[' {
             if data.chars().last().unwrap() != ']' {
-                return VariableType::Unknown 
+                return Err(VariableParseError::ArrayNoClosingBracket)
             }
 
             let stripped_str = data.strip_prefix("[").unwrap();
@@ -57,12 +70,14 @@ impl VariableType {
 
             // Change program to write variables to stack of
             // variables to fix array problem
-            let mut end_type_parse = |working_type: &mut Vec<char>| {
+            let mut end_type_parse = |working_type: &mut Vec<char>| -> Result<(), VariableParseError> {
                 if !working_type.is_empty() {
                     let type_str: String = working_type.iter().collect();
-                    array_types.push(VariableType::get_type_from_string(&type_str));
+                    let variable = VariableType::get_type_from_string(&type_str)?;
+                    array_types.push(variable);
                     working_type.clear();
                 }
+                Ok(())
             };
 
             for c in stripped_str.chars() {
@@ -83,14 +98,14 @@ impl VariableType {
                     },
                     ParseState::Number => {
                         if c == ',' || c == ']' {
-                            end_type_parse(&mut working_type);
+                            end_type_parse(&mut working_type)?;
                             state = ParseState::Begin;
                         }
                         working_type.push(c);
                     },
                     ParseState::Boolean => {
                         if c == ',' || c == ']' {
-                            end_type_parse(&mut working_type);
+                            end_type_parse(&mut working_type)?;
                             state = ParseState::Begin;
                         }
                         working_type.push(c);
@@ -104,34 +119,34 @@ impl VariableType {
                         }
                         if bracket_counter == 0 {
                             state = ParseState::Begin;
-                            end_type_parse(&mut working_type);
+                            end_type_parse(&mut working_type)?;
                         }
                     },
                     ParseState::String => {
                         working_type.push(c);
                         if c == '"' {
                             state = ParseState::Begin;
-                            end_type_parse(&mut working_type);
+                            end_type_parse(&mut working_type)?;
                         }
                     }
                 }
             }
 
-            return VariableType::Array(array_types) 
+            return Ok(VariableType::Array(array_types))
         }
 
         if data.chars().next().unwrap() == '"' {
             if data.chars().last().unwrap() != '"' {
-                return VariableType::Unknown 
+                return Err(VariableParseError::StringNoClosingQuote)
             }
-            return VariableType::String(data.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_string()) 
+            return Ok(VariableType::String(data.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_string()))
         }
 
         if let Ok(d) = data.parse::<f64>() {
-            VariableType::Number(d)
-        } else {
-            VariableType::Unknown 
+            return Ok(VariableType::Number(d))
         }
+        
+        return Err(VariableParseError::NumberBadData)
     }
 }
 
@@ -141,48 +156,48 @@ mod variable_tests {
 
     #[test]
     fn get_type_from_string_returns_correct_type() {
-        assert_eq!(VariableType::get_type_from_string(""), VariableType::Unknown);
-        assert_eq!(VariableType::get_type_from_string("982365.4232"), VariableType::Number(982365.4232));
-        assert_eq!(VariableType::get_type_from_string("\"foo\"abc\"true false [12]\""), VariableType::String("foo\"abc\"true false [12]".to_string()));
-        assert_eq!(VariableType::get_type_from_string("true"), VariableType::Boolean(true));
-        assert_eq!(VariableType::get_type_from_string("false"), VariableType::Boolean(false));
-        assert_eq!(VariableType::get_type_from_string("[]"), VariableType::Array(vec![]));
+        assert_eq!(VariableType::get_type_from_string(""), Err(VariableParseError::NothingToParse));
+        assert_eq!(VariableType::get_type_from_string("982365.4232"), Ok(VariableType::Number(982365.4232)));
+        assert_eq!(VariableType::get_type_from_string("\"foo\"abc\"true false [12]\""), Ok(VariableType::String("foo\"abc\"true false [12]".to_string())));
+        assert_eq!(VariableType::get_type_from_string("true"), Ok(VariableType::Boolean(true)));
+        assert_eq!(VariableType::get_type_from_string("false"), Ok(VariableType::Boolean(false)));
+        assert_eq!(VariableType::get_type_from_string("[]"), Ok(VariableType::Array(vec![])));
     }
 
     #[test]
     fn get_type_from_string_ensure_number_converts() {
-        assert_eq!(VariableType::get_type_from_string("1"), VariableType::Number(1.0));
-        assert_eq!(VariableType::get_type_from_string("1.5"), VariableType::Number(1.5));
-        assert_eq!(VariableType::get_type_from_string("-1"), VariableType::Number(-1.0));
-        assert_eq!(VariableType::get_type_from_string("-1.5"), VariableType::Number(-1.5));
-        assert_eq!(VariableType::get_type_from_string("two"), VariableType::Unknown);
+        assert_eq!(VariableType::get_type_from_string("1"), Ok(VariableType::Number(1.0)));
+        assert_eq!(VariableType::get_type_from_string("1.5"), Ok(VariableType::Number(1.5)));
+        assert_eq!(VariableType::get_type_from_string("-1"), Ok(VariableType::Number(-1.0)));
+        assert_eq!(VariableType::get_type_from_string("-1.5"), Ok(VariableType::Number(-1.5)));
+        assert_eq!(VariableType::get_type_from_string("two"), Err(VariableParseError::NumberBadData));
     }
 
     #[test]
     fn get_type_from_string_ensure_string_converts() {
-        assert_eq!(VariableType::get_type_from_string("\"true\""), VariableType::String("true".to_string()));
-        assert_eq!(VariableType::get_type_from_string("\"foobar"), VariableType::Unknown);
+        assert_eq!(VariableType::get_type_from_string("\"true\""), Ok(VariableType::String("true".to_string())));
+        assert_eq!(VariableType::get_type_from_string("\"foobar"), Err(VariableParseError::StringNoClosingQuote));
     }
 
     #[test]
     fn get_type_from_string_ensure_boolean_converts() {
-        assert_eq!(VariableType::get_type_from_string("true"), VariableType::Boolean(true));
-        assert_eq!(VariableType::get_type_from_string("false"), VariableType::Boolean(false));
+        assert_eq!(VariableType::get_type_from_string("true"), Ok(VariableType::Boolean(true)));
+        assert_eq!(VariableType::get_type_from_string("false"), Ok(VariableType::Boolean(false)));
     }
 
     #[test]
     fn get_type_from_string_ensure_array_converts() {
-        assert_eq!(VariableType::get_type_from_string("[1,2,3,4]"), VariableType::Array(vec![
+        assert_eq!(VariableType::get_type_from_string("[1,2,3,4]"), Ok(VariableType::Array(vec![
             VariableType::Number(1.0), VariableType::Number(2.0), VariableType::Number(3.0), VariableType::Number(4.0)
-        ]));
-        assert_eq!(VariableType::get_type_from_string("[\"foo\", false]"), VariableType::Array(vec![
+        ])));
+        assert_eq!(VariableType::get_type_from_string("[\"foo\", false]"), Ok(VariableType::Array(vec![
             VariableType::String("foo".to_string()), VariableType::Boolean(false)
-        ]));
-        assert_eq!(VariableType::get_type_from_string("[1,2,3,4"), VariableType::Unknown);
-        assert_eq!(VariableType::get_type_from_string("[foo]"), VariableType::Array(vec![VariableType::Unknown]));
-        assert_eq!(VariableType::get_type_from_string("[[]]"), VariableType::Array(vec![VariableType::Array(vec![])]));
-        assert_eq!(VariableType::get_type_from_string("[[1, [], [2]]]"), VariableType::Array(vec![VariableType::Array(vec![VariableType::Number(1.0), VariableType::Array(vec![]), VariableType::Array(vec![VariableType::Number(2.0)])])]));
-        assert_eq!(VariableType::get_type_from_string("[1, \"hello, world!\", [2, \"hi, JOHN!\", [3], [4]], [5, \"foo\"]]"), VariableType::Array(vec![
+        ])));
+        assert_eq!(VariableType::get_type_from_string("[1,2,3,4"), Err(VariableParseError::ArrayNoClosingBracket));
+        assert_eq!(VariableType::get_type_from_string("[foo]"), Err(VariableParseError::NumberBadData));
+        assert_eq!(VariableType::get_type_from_string("[[]]"), Ok(VariableType::Array(vec![VariableType::Array(vec![])])));
+        assert_eq!(VariableType::get_type_from_string("[[1, [], [2]]]"), Ok(VariableType::Array(vec![VariableType::Array(vec![VariableType::Number(1.0), VariableType::Array(vec![]), VariableType::Array(vec![VariableType::Number(2.0)])])])));
+        assert_eq!(VariableType::get_type_from_string("[1, \"hello, world!\", [2, \"hi, JOHN!\", [3], [4]], [5, \"foo\"]]"), Ok(VariableType::Array(vec![
             VariableType::Number(1.0), VariableType::String("hello, world!".to_string()), VariableType::Array(vec![
                 VariableType::Number(2.0), VariableType::String("hi, JOHN!".to_string()), VariableType::Array(vec![
                     VariableType::Number(3.0)
@@ -192,7 +207,7 @@ mod variable_tests {
             ]), VariableType::Array(vec![
                 VariableType::Number(5.0), VariableType::String("foo".to_string())
             ])
-        ]));
+        ])));
     }
 }
 
