@@ -85,7 +85,7 @@ impl VariableType {
                     ParseState::Begin => {
                         working_type.clear();
                         working_type.push(c);
-                        if c.is_ascii_digit() {
+                        if c.is_ascii_digit() || c == '-' {
                             state = ParseState::Number;
                         } else if c.is_alphabetic() {
                             state = ParseState::Boolean;
@@ -187,6 +187,8 @@ mod variable_tests {
 
     #[test]
     fn get_type_from_string_ensure_array_converts() {
+        assert_eq!(VariableType::get_type_from_string("[-1.0]"), Ok(VariableType::Array(vec![VariableType::Number(-1.0)])));
+        assert_eq!(VariableType::get_type_from_string("[-1.5]"), Ok(VariableType::Array(vec![VariableType::Number(-1.5)])));
         assert_eq!(VariableType::get_type_from_string("[1,2,3,4]"), Ok(VariableType::Array(vec![
             VariableType::Number(1.0), VariableType::Number(2.0), VariableType::Number(3.0), VariableType::Number(4.0)
         ])));
