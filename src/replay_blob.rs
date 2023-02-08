@@ -31,7 +31,7 @@ pub mod v1 {
     use crate::replay_blob::{Serialize, Deserialize};
     use std::path::Path;
     use std::fs;
-    use std::mem;
+    
     use std::io::Write;
 
     pub struct ReplayBlob {
@@ -56,7 +56,7 @@ pub mod v1 {
     }
 
     impl Serialize for ReplayBlob {
-        fn to_file(&self, path: &Path) -> std::io::Result<()> {
+        fn to_file(&self, _path: &Path) -> std::io::Result<()> {
             let mut file = fs::File::create(self.replay_uuid.to_string())?;
 
             file.write_all(&[self.version])?;
@@ -73,7 +73,7 @@ pub mod v1 {
     }
 
     impl Deserialize for ReplayBlob {
-        fn from_file(path: &Path) -> std::io::Result<ReplayBlob> {
+        fn from_file(_path: &Path) -> std::io::Result<ReplayBlob> {
             Ok(ReplayBlob::new())
         }
     }
@@ -81,7 +81,7 @@ pub mod v1 {
 
 #[cfg(test)]
 mod replay_blob_tests {
-    use super::*;
+    
 
     
 }

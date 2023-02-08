@@ -47,12 +47,12 @@ impl VariableType {
             return Ok(VariableType::Boolean(data == "true"))
         }
 
-        if data.chars().next().unwrap() == '[' {
-            if data.chars().last().unwrap() != ']' {
+        if data.starts_with('[') {
+            if !data.ends_with(']') {
                 return Err(VariableParseError::ArrayNoClosingBracket)
             }
 
-            let stripped_str = data.strip_prefix("[").unwrap();
+            let stripped_str = data.strip_prefix('[').unwrap();
 
             enum ParseState {
                 Begin,
@@ -85,7 +85,7 @@ impl VariableType {
                     ParseState::Begin => {
                         working_type.clear();
                         working_type.push(c);
-                        if c.is_digit(10) {
+                        if c.is_ascii_digit() {
                             state = ParseState::Number;
                         } else if c.is_alphabetic() {
                             state = ParseState::Boolean;
@@ -135,18 +135,18 @@ impl VariableType {
             return Ok(VariableType::Array(array_types))
         }
 
-        if data.chars().next().unwrap() == '"' {
-            if data.chars().last().unwrap() != '"' {
+        if data.starts_with('\"') {
+            if !data.ends_with('\"') {
                 return Err(VariableParseError::StringNoClosingQuote)
             }
-            return Ok(VariableType::String(data.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_string()))
+            return Ok(VariableType::String(data.strip_prefix('\"').unwrap().strip_suffix('\"').unwrap().to_string()))
         }
 
         if let Ok(d) = data.parse::<f64>() {
             return Ok(VariableType::Number(d))
         }
         
-        return Err(VariableParseError::NumberBadData)
+        Err(VariableParseError::NumberBadData)
     }
 }
 
